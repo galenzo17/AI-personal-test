@@ -1,145 +1,151 @@
 import pygame
-import random
 import sys
 
-# Inicialización de Pygame
-pygame.init()
-
-# Dimensiones de la pantalla
-SCREEN_WIDTH = 800
-SCREEN_HEIGHT = 600
-
-# Colores
+# Configuración
+WIDTH, HEIGHT = 800, 400
+FPS = 60
 WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 RED = (255, 0, 0)
 GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 
-# Configuración de la pantalla
-screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-pygame.display.set_caption("Space Invaders")
-
-# Reloj para controlar FPS
+# Inicializar Pygame
+pygame.init()
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Mario Clone")
 clock = pygame.time.Clock()
-FPS = 60
 
-# Clases del juego
+# Clases
 class Player(pygame.sprite.Sprite):
-    def __init__(self):
+    def __init__(self, x, y):
         super().__init__()
-        self.image = pygame.Surface((50, 30))
-        self.image.fill(GREEN)
-        self.rect = self.image.get_rect()
-        self.rect.centerx = SCREEN_WIDTH // 2
-        self.rect.bottom = SCREEN_HEIGHT - 10
+        self.image = pygame.Surface((40, 50))
+        self.image.fill(BLUE)
+        self.rect = self.image.get_rect(topleft=(x, y))
+        self.velocity = pygame.Vector2(0, 0)
         self.speed = 5
+        self.jump_power = 12
+        self.gravity = 0.5
+        self.on_ground = False
 
-    def update(self):
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT] and self.rect.left > 0:
-            self.rect.x -= self.speed
-        if keys[pygame.K_RIGHT] and self.rect.right < SCREEN_WIDTH:
-            self.rect.x += self.speed
+    def update(self, keys, platforms):
+        self.velocity.x = 0
+        if keys[pygame.K_LEFT]:
+            self.velocity.x = -self.speed
+        if keys[pygame.K_RIGHT]:
+            self.velocity.x = self.speed
+        if keys[pygame.K_SPACE] and self.on_ground:
+            self.velocity.y = -self.jump_power
 
-    def shoot(self):
-        bullet = Bullet(self.rect.centerx, self.rect.top)
-        bullets.add(bullet)
+        self.velocity.y += self.gravity
+        self.on_ground = False
+        self.rect.y += self.velocity.y
+        for platform in platforms:
+            if self.rect.colliderect(platform.rect):
+                if self.velocity.y > 0:
+                    self.rect.bottom = platform.rect.top
+                    self.velocity.y = 0
+                    self.on_ground = True
+                elif self.velocity.y < 0:
+                    self.rect.top = platform.rect.bottom
+                    self.velocity.y = 0
 
+        self.rect.x += self.velocity.x
+        for platform in platforms:
+            if self.rect.colliderect(platform.rect):
+                if self.velocity.x > 0:
+                    self.rect.right = platform.rect.left
+                elif self.velocity.x < 0:
+                    self.rect.left = platform.rect.right
 
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        self.image = pygame.Surface((40, 30))
+        self.image = pygame.Surface((40, 40))
         self.image.fill(RED)
-        self.rect = self.image.get_rect()
-        self.rect.topleft = (x, y)
+        self.rect = self.image.get_rect(topleft=(x, y))
+        self.direction = 1
         self.speed = 2
 
-    def update(self):
-        self.rect.x += self.speed
-        if self.rect.right >= SCREEN_WIDTH or self.rect.left <= 0:
-            self.speed *= -1
-            self.rect.y += 10
+    def update(self, platforms):
+        self.rect.x += self.speed * self.direction
+        for platform in platforms:
+            if self.rect.colliderect(platform.rect):
+                self.direction *= -1
+                self.rect.x += self.speed * self.direction
 
-
-class Bullet(pygame.sprite.Sprite):
+class PowerUp(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        self.image = pygame.Surface((5, 10))
-        self.image.fill(WHITE)
-        self.rect = self.image.get_rect()
-        self.rect.center = (x, y)
-        self.speed = -7
+        self.image = pygame.Surface((20, 20))
+        self.image.fill(GREEN)
+        self.rect = self.image.get_rect(center=(x, y))
 
-    def update(self):
-        self.rect.y += self.speed
-        if self.rect.bottom < 0:
-            self.kill()
+class Platform(pygame.sprite.Sprite):
+    def __init__(self, x, y, w, h):
+        super().__init__()
+        self.image = pygame.Surface((w, h))
+        self.image.fill(BLACK)
+        self.rect = self.image.get_rect(topleft=(x, y))
 
-# Función para reiniciar el juego
-def reset_game():
-    player.rect.centerx = SCREEN_WIDTH // 2
-    player.rect.bottom = SCREEN_HEIGHT - 10
-    bullets.empty()
-    enemies.empty()
-    for i in range(5):
-        for j in range(8):
-            enemy = Enemy(100 + j * 60, 50 + i * 40)
-            enemies.add(enemy)
+class Camera:
+    def __init__(self, width):
+        self.offset = 0
+        self.width = width
 
-# Inicializar jugador y grupos de sprites
-player = Player()
-player_group = pygame.sprite.Group(player)
-bullets = pygame.sprite.Group()
-enemies = pygame.sprite.Group()
-reset_game()
+    def update(self, target):
+        self.offset = min(max(0, target.rect.x - WIDTH // 2), self.width - WIDTH)
 
-# Fuente para mostrar mensajes
-font = pygame.font.Font(None, 74)
+    def apply(self, rect):
+        return rect.move(-self.offset, 0)
 
+# Inicialización del juego
+player = Player(50, 300)
+enemy = Enemy(400, 300)
+power_up = PowerUp(700, 260)
+
+platforms = pygame.sprite.Group(
+    Platform(0, 350, 1600, 50),  # Suelo
+    Platform(300, 300, 200, 20),  # Plataforma
+    Platform(600, 250, 200, 20)   # Plataforma
+)
+
+all_sprites = pygame.sprite.Group(player, enemy, power_up, *platforms)
+camera = Camera(1600)
+
+# Juego principal
 def main():
-    running = True
-    game_over = False
-
-    while running:
-        screen.fill(BLACK)
-
+    global player, enemy, power_up
+    while True:
+        keys = pygame.key.get_pressed()
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE and not game_over:
-                    player.shoot()
-                if event.key == pygame.K_r and game_over:
-                    game_over = False
-                    reset_game()
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+                player = Player(50, 300)
+                enemy = Enemy(400, 300)
+                power_up = PowerUp(700, 260)
+                all_sprites.add(player, enemy, power_up)
 
-        if not game_over:
-            # Actualizar
-            player_group.update()
-            bullets.update()
-            enemies.update()
+        # Actualización
+        player.update(keys, platforms)
+        enemy.update(platforms)
+        camera.update(player)
 
-            # Colisiones
-            for bullet in pygame.sprite.groupcollide(bullets, enemies, True, True):
-                pass
+        if player.rect.colliderect(enemy.rect):
+            print("Game Over!")
+            player = Player(50, 300)
 
-            if pygame.sprite.spritecollideany(player, enemies):
-                game_over = True
+        if player.rect.colliderect(power_up.rect):
+            print("Power-up collected!")
+            power_up.kill()
 
-            if not enemies:
-                game_over = True
-
-            # Dibujar
-            player_group.draw(screen)
-            bullets.draw(screen)
-            enemies.draw(screen)
-        else:
-            message = "Game Over! Press R to Restart" if enemies else "You Win! Press R to Restart"
-            text = font.render(message, True, WHITE)
-            screen.blit(text, (SCREEN_WIDTH // 2 - text.get_width() // 2, SCREEN_HEIGHT // 2 - text.get_height() // 2))
+        # Dibujo
+        screen.fill(WHITE)
+        for sprite in all_sprites:
+            screen.blit(sprite.image, camera.apply(sprite.rect))
 
         pygame.display.flip()
         clock.tick(FPS)
